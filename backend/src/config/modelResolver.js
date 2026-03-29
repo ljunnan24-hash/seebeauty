@@ -1,35 +1,45 @@
-// Centralized OpenAI model resolution logic
-// Priority order:
-//   Vision: OPENAI_VISION_MODEL -> OPENAI_MODEL -> default
-//   Chat:   OPENAI_MODEL -> fallback list
-// Handles deprecated model name mapping.
+// 火山方舟（豆包）模型 ID，与控制台推理接入点一致。
+// 文档：https://www.volcengine.com/docs/82379/1298459
 
 import logger from './logger.js';
 
-const deprecatedMap = {
-  'gpt-4-vision-preview': 'gpt-4o-mini',
-  'gpt-4-turbo-vision': 'gpt-4o',
-  'gpt-4-turbo-preview': 'gpt-4o-mini'
-};
+const DEFAULT_VISION = 'doubao-seed-2-0-mini-260215';
+const DEFAULT_CHAT = 'doubao-seed-2-0-mini-260215';
 
-const defaultChat = 'gpt-4o-mini';
-const defaultVision = 'gpt-4o-mini';
+function pickVision() {
+  return (
+    process.env.ARK_VISION_MODEL
+    || process.env.DOUBAO_VISION_MODEL
+    || process.env.ARK_MODEL
+    || process.env.DOUBAO_MODEL
+    || DEFAULT_VISION
+  );
+}
 
-function normalize(name, type) {
-  if (!name) return type === 'vision' ? defaultVision : defaultChat;
-  const mapped = deprecatedMap[name] || name;
-  if (mapped !== name) {
-    logger.warn(`Model '${name}' deprecated. Using '${mapped}' instead.`);
-  }
-  return mapped;
+function pickChat() {
+  return (
+    process.env.ARK_CHAT_MODEL
+    || process.env.DOUBAO_CHAT_MODEL
+    || process.env.ARK_MODEL
+    || process.env.DOUBAO_MODEL
+    || DEFAULT_CHAT
+  );
 }
 
 export function getChatModel() {
-  return normalize(process.env.OPENAI_MODEL, 'chat');
+  const id = pickChat();
+  if (process.env.OPENAI_MODEL && !process.env.ARK_CHAT_MODEL && !process.env.DOUBAO_CHAT_MODEL && !process.env.ARK_MODEL && !process.env.DOUBAO_MODEL) {
+    logger.warn('OPENAI_MODEL is set but ignored; use ARK_CHAT_MODEL / ARK_MODEL for 火山方舟.');
+  }
+  return id;
 }
 
 export function getVisionModel() {
-  return normalize(process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL, 'vision');
+  const id = pickVision();
+  if (process.env.OPENAI_VISION_MODEL && !process.env.ARK_VISION_MODEL && !process.env.DOUBAO_VISION_MODEL && !process.env.ARK_MODEL && !process.env.DOUBAO_MODEL) {
+    logger.warn('OPENAI_VISION_MODEL is set but ignored; use ARK_VISION_MODEL / ARK_MODEL for 火山方舟.');
+  }
+  return id;
 }
 
 export default { getChatModel, getVisionModel };

@@ -7,14 +7,29 @@ SeeBeauty 是一个基于 AI 的图片评分与报告平台，提供「正常点
 - `frontend`：React + Vite 前端应用（页面、路由、状态管理、API 调用）
 - `backend`：Express + Sequelize 后端服务（鉴权、评分任务、报告、支付）
 - `database`：数据库初始化 SQL（`seebeauty.sql`）
-- `nginx-site.conf`：Nginx 反向代理与静态资源部署配置
+- `nginx-site.conf`：Nginx 反向代理与静态资源部署配置（传统 VPS 场景）
+- `frontend/vercel.json`：Vercel 上 SPA 路由回退
 
 ## 技术栈
 
 - 前端：React 18、Vite、TailwindCSS、React Router、Zustand、Axios
-- 后端：Node.js、Express、Sequelize、MySQL、JWT
-- AI：OpenAI SDK（视觉解析与文本评分）
+- 后端：Node.js、Express、Sequelize、**MySQL**、JWT
+- AI：**火山引擎方舟（豆包）** [Responses API](https://www.volcengine.com/docs/82379/1569618)（多模态特征提取 + 文本评分 JSON）
 - 支付：Stripe（Checkout + Webhook）
+
+## 数据库说明（AWS 下线后是否还能用）
+
+- 本项目使用 **MySQL**，连接配置见 `backend/src/config/database.js`（`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`）。
+- 若原先 **AWS RDS / EC2 上的 MySQL 已随实例删除**，则**旧库不可用**，需要新建任意兼容 MySQL 的实例（如阿里云 RDS、腾讯云、PlanetScale、Railway MySQL、自建 VPS 等），然后：
+  1. 导入或执行 `database/seebeauty.sql`（或 `npm run db:init` 初始化表结构）
+  2. 把新库的地址与账号写入后端环境变量
+- **TLS**：生产环境默认对 MySQL 启用 SSL；本地无证书时在后端设置 `DB_SSL=false`。仅开发环境连远程云库时可设 `DB_SSL=true`。
+
+## 部署到 Vercel（重要）
+
+- **适合上 Vercel 的部分**：`frontend` 静态站点（Vite build）。在 Vercel 控制台将 **Root Directory** 设为 `frontend`，构建命令 `npm run build`，输出目录 `dist`。已附带 `frontend/vercel.json` 做 SPA 路由。
+- **不适合直接整包丢上 Vercel 的部分**：当前 `backend` 是**常驻 Express 进程**（文件上传、异步任务、Stripe Webhook、长连接），不是无服务器函数形态。需要单独托管，例如：Railway、Render、Fly.io、自建 VPS、或云厂商容器服务。
+- **联调**：在 Vercel 上为前端配置环境变量 `VITE_API_URL=https://你的后端域名/api`，并在后端配置 `CORS_ALLOWED_ORIGINS` / `FRONTEND_URL` 为你的 Vercel 域名。
 
 ## 核心功能
 
@@ -43,7 +58,8 @@ npm install
 
 ### 3) 配置环境变量（安全模板）
 
-> 仅在本地填写真实值，**不要提交** `.env` 到仓库。
+> 仅在本地或托管平台「环境变量」中填写真实值，**不要提交** `.env` 到仓库。  
+> **不要把 API Key 贴在聊天或 issue 里**；若已泄露，请在火山控制台轮换密钥。
 
 #### `backend/.env` 模板
 
@@ -61,6 +77,8 @@ DB_NAME=seebeauty
 DB_USER=root
 DB_PASSWORD=your_db_password
 DB_SYNC_MODE=alter
+# 本地 MySQL 无 SSL 时
+DB_SSL=false
 
 # JWT
 JWT_SECRET=replace_with_a_long_random_string
@@ -68,10 +86,22 @@ JWT_EXPIRES_IN=7d
 JWT_REFRESH_SECRET=replace_with_another_long_random_string
 JWT_REFRESH_EXPIRES_IN=30d
 
-# OpenAI
-OPENAI_API_KEY=sk-xxxx
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_VISION_MODEL=gpt-4o-mini
+# 火山引擎方舟（豆包）— 与官方 curl 一致，使用 Responses API
+# 文档：创建模型响应 https://www.volcengine.com/docs/82379/1569618
+ARK_API_KEY=your_ark_api_key
+ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+# 模型接入点 ID（控制台创建的推理接入点）
+ARK_MODEL=doubao-seed-2-0-mini-260215
+# 可选：视觉与文本分开配置（不设置则沿用 ARK_MODEL）
+# ARK_VISION_MODEL=doubao-seed-2-0-mini-260215
+# ARK_CHAT_MODEL=doubao-seed-2-0-mini-260215
+ARK_VISION_MAX_OUTPUT_TOKENS=2048
+ARK_CHAT_MAX_OUTPUT_TOKENS=4096
+ARK_REQUEST_TIMEOUT_MS=120000
+
+# 也可用 DOUBAO_API_KEY / DOUBAO_MODEL 作为别名（与 ARK_* 二选一即可）
+
+# 限流（仍沿用原环境变量名，适用于方舟调用）
 OPENAI_RPM_LIMIT=3
 OPENAI_RATE_INTERVAL_MS=60000
 OPENAI_MAX_CONCURRENT=1
@@ -136,10 +166,17 @@ npm run dev
 - 后端：`3000`
 - 前端：`5176`
 
+### 6) 快速验证方舟密钥（可选）
+
+```bash
+cd backend
+node src/scripts/testOpenAI.js
+```
+
 ## 生产部署提示
 
-- 可以用 `nginx-site.conf` 将 `/api` 反代到后端服务。
-- 前端构建命令：`npm run build`（在 `frontend` 目录）。
+- 传统单机：可用 `nginx-site.conf` 将 `/api` 反代到后端，静态资源指向前端 `dist`。
+- 前端构建：`cd frontend && npm run build`。
 - 建议将所有密钥放到服务器环境变量或密钥管理系统中，不写死在代码与仓库。
 
 ## 安全建议（当前仓库约定）

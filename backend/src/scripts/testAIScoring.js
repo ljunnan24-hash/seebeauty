@@ -36,7 +36,7 @@ async function testAIScoring() {
     const prompt = aiService.buildPrompt(testData);
     console.log('   提示词长度:', prompt.length, '字符');
 
-    console.log('\n2. 调用OpenAI API...');
+    console.log('\n2. 调用火山方舟 API...');
     const startTime = Date.now();
     const result = await aiService.callAI({
       prompt: prompt,
@@ -155,11 +155,11 @@ async function testAIScoring() {
     console.error('\n测试失败:', error.message);
     console.error('错误详情:', error);
 
-    if (error.message === 'AI_SCORING_OPENAI_ERROR') {
+    if (error.message === 'AI_SCORING_LLM_ERROR') {
       console.error('\n可能的原因：');
-      console.error('1. OpenAI API密钥无效');
-      console.error('2. 代理连接失败');
-      console.error('3. API配额用尽');
+      console.error('1. ARK_API_KEY / DOUBAO_API_KEY 无效');
+      console.error('2. 代理或网络不可用');
+      console.error('3. 方舟用量或模型接入点配置问题');
     }
   }
 }

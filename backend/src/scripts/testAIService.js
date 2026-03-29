@@ -10,7 +10,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 async function testAIService() {
   try {
     console.log('正在测试AI评分服务...');
-    console.log('API Key:', process.env.OPENAI_API_KEY ? 'Configured' : 'Not set');
+    console.log('Ark API Key:', (process.env.ARK_API_KEY || process.env.DOUBAO_API_KEY) ? 'Configured' : 'Not set');
     console.log('Proxy:', process.env.HTTPS_PROXY || process.env.HTTP_PROXY || 'Not configured');
 
     // 导入AI服务（已经是实例）
@@ -29,7 +29,7 @@ async function testAIService() {
       mode: 'normal'
     });
 
-    console.log('\n发送测试请求到OpenAI...');
+    console.log('\n发送测试请求到火山方舟...');
     const result = await aiService.callAI({
       prompt: testPrompt,
       mode: 'normal',
@@ -43,11 +43,11 @@ async function testAIService() {
     console.error('AI服务测试失败:', error.message);
     console.error('错误详情:', error);
 
-    if (error.message === 'AI_SCORING_OPENAI_ERROR') {
-      console.error('OpenAI API调用失败，请检查：');
-      console.error('1. API密钥是否有效');
-      console.error('2. 代理服务器是否运行（端口62148）');
-      console.error('3. 网络连接是否正常');
+    if (error.message === 'AI_SCORING_LLM_ERROR') {
+      console.error('火山方舟 API 调用失败，请检查：');
+      console.error('1. ARK_API_KEY 是否有效');
+      console.error('2. 代理（HTTPS_PROXY）是否可用');
+      console.error('3. 网络与模型接入点 ID 是否正确');
     }
   }
 }

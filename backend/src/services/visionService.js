@@ -1,17 +1,11 @@
-import OpenAI from 'openai';
 import crypto from 'crypto';
 import { ImageAsset, FeatureSet } from '../models/index.js';
 import logger from '../config/logger.js';
-import proxyAgent from '../config/proxy.js';
 import fs from 'fs/promises';
 import path from 'path';
 import modelResolver from '../config/modelResolver.js';
 import openAiRateLimiter from '../utils/openAiRateLimiter.js';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  httpAgent: proxyAgent
-});
+import { createArkResponse, stripMarkdownJsonFence } from './arkResponsesClient.js';
 
 class VisionService {
   constructor() {
@@ -53,7 +47,7 @@ class VisionService {
       // 获取图片URL或本地路径
       const imageUrl = await this.getImageUrl(image);
 
-      // 调用Vision API提取特征
+      // 调用 Ark Responses API（多模态）提取特征
       const features = await this.callVisionAPI(imageUrl, imageId);
 
       // 检测多样性特征
@@ -76,62 +70,60 @@ class VisionService {
     }
   }
 
-  // 调用Vision API
+  // 调用视觉模型（火山方舟 Responses API）
   async callVisionAPI(imageUrl, imageId) {
     try {
-      const response = await openAiRateLimiter.execute(
-        () => openai.chat.completions.create({
-          model: modelResolver.getVisionModel(),
-          messages: [
-            {
-              role: "system",
-              content: `You are a professional image analyzer. Extract detailed visual features from the image including:
+      const systemInstruction = `You are a professional image analyzer. Extract detailed visual features from the image including:
               - Face: symmetry, skin quality, expression, facial structure, eye contact
               - Figure: posture, body language, proportions, fitness level
               - Outfit: style, color coordination, fit, appropriateness, accessories
               - Photography: lighting, composition, background, focus, color grading
               - Overall: mood, authenticity, visual appeal, uniqueness
 
-              Return a structured JSON with scores (1-10) and descriptions for each category.`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageUrl,
-                    detail: "high"
-                  }
-                },
-                {
-                  type: "text",
-                  text: "Analyze this image and provide detailed feature extraction."
-                }
-              ]
-            }
-          ],
-          max_tokens: 1000,
-          temperature: 0,
-          seed: this.deriveSeed(imageId)
-        }),
+              Return a structured JSON with scores (1-10) and descriptions for each category.`;
+
+      const body = {
+        model: modelResolver.getVisionModel(),
+        input: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_image',
+                image_url: imageUrl
+              },
+              {
+                type: 'input_text',
+                text: `${systemInstruction}\n\nAnalyze this image and provide detailed feature extraction. Respond with JSON only.`
+              }
+            ]
+          }
+        ]
+      };
+
+      const temperature = parseFloat(process.env.ARK_VISION_TEMPERATURE || '0', 10);
+      if (!Number.isNaN(temperature)) {
+        body.temperature = temperature;
+      }
+      const maxOut = parseInt(process.env.ARK_VISION_MAX_OUTPUT_TOKENS || '2048', 10);
+      if (Number.isFinite(maxOut) && maxOut > 0) {
+        body.max_output_tokens = maxOut;
+      }
+
+      const text = await openAiRateLimiter.execute(
+        () => createArkResponse(body),
         { label: 'vision:extract' }
       );
 
-      const content = response.choices[0].message.content;
-
       // 尝试解析JSON响应
       try {
-        return JSON.parse(content);
+        return JSON.parse(stripMarkdownJsonFence(text));
       } catch (e) {
         // 如果不是JSON，使用默认结构
-        return this.parseTextResponse(content);
+        return this.parseTextResponse(text);
       }
     } catch (error) {
       logger.error('Vision API call failed:', error);
-      if (String(error).includes('deprecated')) {
-        logger.warn('Configured vision model appears deprecated. Update OPENAI_MODEL or OPENAI_VISION_MODEL env variable.');
-      }
 
       // 返回模拟数据（用于开发/测试）
       return this.getMockFeatures();

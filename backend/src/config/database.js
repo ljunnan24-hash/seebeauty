@@ -54,6 +54,20 @@ const config = {
 const env = process.env.NODE_ENV || 'development';
 const dbConfig = config[env];
 
+/** 云库常用 TLS。本地 MySQL 无证书时设 DB_SSL=false；仅开发连远程库时设 DB_SSL=true。 */
+function resolveDialectOptions(envName) {
+  if (process.env.DB_SSL === 'false') return undefined;
+  if (process.env.DB_SSL === 'true' || envName === 'production') {
+    return {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    };
+  }
+  return undefined;
+}
+
 export const sequelize = new Sequelize(
   dbConfig.database,
   dbConfig.username,
@@ -64,7 +78,7 @@ export const sequelize = new Sequelize(
     dialect: dbConfig.dialect,
     logging: dbConfig.logging,
     pool: dbConfig.pool,
-    dialectOptions: dbConfig.dialectOptions
+    dialectOptions: resolveDialectOptions(env) ?? dbConfig.dialectOptions
   }
 );
 

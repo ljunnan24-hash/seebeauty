@@ -1,99 +1,10 @@
-import OpenAI from 'openai';
 import crypto from 'crypto';
-import fetch from 'node-fetch';
 import { jsonrepair } from 'jsonrepair';
 import logger from '../config/logger.js';
-import proxyAgent from '../config/proxy.js';
 import promptTemplates from '../config/promptTemplates.js';
 import modelResolver from '../config/modelResolver.js';
 import openAiRateLimiter from '../utils/openAiRateLimiter.js';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  httpAgent: proxyAgent,
-  // 使用自定义fetch以支持代理
-  fetch: proxyAgent ? (url, options = {}) => fetch(url, { ...options, agent: proxyAgent }) : undefined
-});
-
-const moduleArraySchema = {
-  type: 'array',
-  items: {
-    type: 'object',
-    required: ['dimension', 'score', 'comment', 'tip'],
-    additionalProperties: false,
-    properties: {
-      dimension: { type: 'string', minLength: 1 },
-      score: { type: 'number', minimum: 1, maximum: 10 },
-      comment: { type: 'string', minLength: 1 },
-      tip: { type: 'string', minLength: 1 }
-    }
-  },
-  minItems: 5,
-  maxItems: 5
-};
-
-const fiveNumberArraySchema = {
-  type: 'array',
-  items: { type: 'number', minimum: 1, maximum: 10 },
-  minItems: 5,
-  maxItems: 5
-};
-
-const scoringResponseSchema = {
-  name: 'ScoringResponse',
-  strict: true,
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['radar', 'modules', 'moduleBurns', 'evaluation', 'recommendations', 'summary'],
-    properties: {
-      radar: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['face', 'figure', 'outfit', 'photography', 'others'],
-        properties: {
-          face: fiveNumberArraySchema,
-          figure: fiveNumberArraySchema,
-          outfit: fiveNumberArraySchema,
-          photography: fiveNumberArraySchema,
-          others: fiveNumberArraySchema
-        }
-      },
-      modules: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['face', 'figure', 'outfit', 'photography', 'others'],
-        properties: {
-          face: moduleArraySchema,
-          figure: moduleArraySchema,
-          outfit: moduleArraySchema,
-          photography: moduleArraySchema,
-          others: moduleArraySchema
-        }
-      },
-      moduleBurns: {
-        anyOf: [
-          { type: 'null' },
-          {
-            type: 'object',
-            additionalProperties: { type: 'string', minLength: 1 }
-          }
-        ]
-      },
-      evaluation: {
-        type: 'array',
-        items: { type: 'string', minLength: 1 },
-        minItems: 3
-      },
-      recommendations: {
-        type: 'array',
-        items: { type: 'string', minLength: 1 },
-        minItems: 3
-      },
-      summary: { type: 'string', minLength: 10 }
-    }
-  }
-};
+import { createArkResponse, stripMarkdownJsonFence } from './arkResponsesClient.js';
 
 class AIScoringService {
   constructor() {
@@ -231,7 +142,7 @@ class AIScoringService {
     return prompt;
   }
 
-  // 调用AI
+  // 调用AI（火山方舟 Responses API，文本 JSON 输出）
   async callAI({ prompt, mode, seed }) {
     try {
       const systemPrompt = mode === 'roast'
@@ -240,84 +151,45 @@ class AIScoringService {
 
       const temperature = mode === 'roast' ? 0.8 : 0.2;
 
-      const requestPayload = {
+      const mergedUserText = [
+        '### System',
+        systemPrompt,
+        '',
+        '### User',
+        prompt,
+        '',
+        'Respond with a single valid JSON object only (no markdown fences, no commentary).',
+        typeof seed === 'number' ? `Deterministic hint (ignore if unsupported): seed=${seed}` : ''
+      ].filter(Boolean).join('\n');
+
+      const body = {
         model: modelResolver.getChatModel(),
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
+        input: [
           {
             role: 'user',
-            content: prompt
+            content: [{ type: 'input_text', text: mergedUserText }]
           }
         ],
-        temperature,
-        max_tokens: 3000,  // 增加token限制以确保完整响应
-        response_format: {
-          type: 'json_schema',
-          json_schema: scoringResponseSchema
-        }
+        temperature
       };
 
-      if (typeof seed === 'number') {
-        requestPayload.seed = seed;
+      const maxOut = parseInt(process.env.ARK_CHAT_MAX_OUTPUT_TOKENS || '4096', 10);
+      if (Number.isFinite(maxOut) && maxOut > 0) {
+        body.max_output_tokens = maxOut;
       }
 
-      const response = await openAiRateLimiter.execute(
-        () => openai.chat.completions.create(requestPayload),
+      const content = await openAiRateLimiter.execute(
+        () => createArkResponse(body),
         { label: `scoring:${mode}` }
       );
 
-      const choice = response?.choices?.[0];
-      const message = choice?.message ?? {};
-
-      let parsedOutput = message?.parsed ?? null;
-      let content = message?.content ?? '';
-
-      if (Array.isArray(content)) {
-        const jsonPart = content.find(part => part && typeof part === 'object' && part.type === 'json' && part.json);
-        if (jsonPart?.json) {
-          parsedOutput = parsedOutput || jsonPart.json;
-        }
-
-        content = content.map(part => {
-          if (!part) return '';
-          if (typeof part === 'string') return part;
-          if (typeof part.text === 'string') return part.text;
-          if (typeof part === 'object') {
-            if (part.type === 'json' && part.json) {
-              try {
-                return JSON.stringify(part.json);
-              } catch {
-                return '';
-              }
-            }
-            if (typeof part.content === 'string') return part.content;
-            if (part?.value) return JSON.stringify(part.value);
-            if (part?.data) return JSON.stringify(part.data);
-          }
-          return '';
-        }).join('');
-      }
-
-      if (!parsedOutput && typeof content === 'string') {
+      let parsedOutput = null;
+      if (typeof content === 'string' && content.trim()) {
+        const cleaned = stripMarkdownJsonFence(content);
         try {
-          parsedOutput = JSON.parse(content);
+          parsedOutput = JSON.parse(cleaned);
         } catch {
           // defer to caller for parsing/logging
-        }
-      }
-
-      if (parsedOutput && typeof parsedOutput === 'object' && !content) {
-        content = JSON.stringify(parsedOutput);
-      }
-
-      if (typeof content !== 'string') {
-        try {
-          content = JSON.stringify(content);
-        } catch {
-          content = String(content ?? '');
         }
       }
 
@@ -326,12 +198,12 @@ class AIScoringService {
       }
 
       return {
-        rawOutput: content,
+        rawOutput: typeof content === 'string' ? content : String(content ?? ''),
         parsedOutput
       };
     } catch (error) {
-      logger.error('OpenAI API call failed:', error);
-      const wrapped = new Error('AI_SCORING_OPENAI_ERROR');
+      logger.error('Ark Responses API call failed:', error);
+      const wrapped = new Error('AI_SCORING_LLM_ERROR');
       wrapped.cause = error;
       throw wrapped;
     }
@@ -598,7 +470,7 @@ CRITICAL RULES:
       throw new Error('AI_OUTPUT_NOT_OBJECT');
     }
 
-    const normalized = {};
+    const normalized = { radar: {} };
 
     requiredModules.forEach(module => {
       const scores = parsed.radar[module];

@@ -36,7 +36,7 @@ async function testRoastMode() {
     const prompt = aiService.buildPrompt(testData);
     console.log('   提示词长度:', prompt.length, '字符');
 
-    console.log('\n2. 调用OpenAI API (Roast模式)...');
+    console.log('\n2. 调用火山方舟 API (Roast模式)...');
     const startTime = Date.now();
     const result = await aiService.callAI({
       prompt: prompt,
