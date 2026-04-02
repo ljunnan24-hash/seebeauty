@@ -22,11 +22,9 @@ const parseRetryAfterHeader = (value) => {
 
   const numeric = Number.parseFloat(value);
   if (Number.isFinite(numeric) && numeric > 0) {
-    // If numeric is already large, treat as milliseconds; otherwise seconds.
     return numeric > 1000 ? Math.ceil(numeric) : Math.ceil(numeric * 1000);
   }
 
-  // RFC 7231 date format
   const retryDate = Date.parse(value);
   if (Number.isFinite(retryDate)) {
     const diff = retryDate - Date.now();
@@ -38,7 +36,15 @@ const parseRetryAfterHeader = (value) => {
   return null;
 };
 
-class OpenAIRateLimiter {
+function envInt(primary, legacy, fallback) {
+  return parsePositiveInt(process.env[primary] || process.env[legacy], fallback);
+}
+
+function envNum(primary, legacy, fallback) {
+  return parsePositiveNumber(process.env[primary] || process.env[legacy], fallback);
+}
+
+class LlmRateLimiter {
   constructor({ maxRequests, intervalMs, maxConcurrent, defaultRetryDelayMs, maxRetries, maxRetryDelayMs }) {
     this.maxRequests = maxRequests;
     this.intervalMs = intervalMs;
@@ -55,14 +61,14 @@ class OpenAIRateLimiter {
 
   schedule(task, metadata = {}) {
     if (typeof task !== 'function') {
-      throw new TypeError('OpenAIRateLimiter.schedule expects a function');
+      throw new TypeError('LlmRateLimiter.schedule expects a function');
     }
 
     return new Promise((resolve, reject) => {
       this.queue.push({ task, resolve, reject, metadata });
       if (this.queue.length > 1) {
         const label = metadata.label ? ` [${metadata.label}]` : '';
-        logger.warn(`OpenAI rate limiter queue length=${this.queue.length}${label}`);
+        logger.warn(`LLM(方舟) rate limiter queue length=${this.queue.length}${label}`);
       }
       this.drain();
     });
@@ -95,7 +101,7 @@ class OpenAIRateLimiter {
         if (typeof this.timer.unref === 'function') {
           this.timer.unref();
         }
-        logger.warn(`OpenAI rate limiter delaying next request for ${wait}ms (queue=${this.queue.length})`);
+        logger.warn(`LLM(方舟) rate limiter delaying next request for ${wait}ms (queue=${this.queue.length})`);
       }
       return;
     }
@@ -138,7 +144,7 @@ class OpenAIRateLimiter {
         }
 
         const delayMs = this.getRetryDelay(error, attempt);
-        logger.warn(`OpenAI rate limit hit${label ? ` for ${label}` : ''}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        logger.warn(`LLM(方舟) rate limit hit${label ? ` for ${label}` : ''}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
         await this.delay(delayMs);
       }
     }
@@ -173,7 +179,6 @@ class OpenAIRateLimiter {
       return clampDelay(delayMs, this.maxRetryDelayMs);
     }
 
-    // exponential backoff with jitter
     const base = this.defaultRetryDelayMs;
     const backoff = base * Math.pow(1.5, attempt - 1);
     const jitter = Math.floor(Math.random() * 5000);
@@ -185,13 +190,13 @@ class OpenAIRateLimiter {
   }
 }
 
-const limiter = new OpenAIRateLimiter({
-  maxRequests: parsePositiveInt(process.env.OPENAI_RPM_LIMIT, 3),
-  intervalMs: parsePositiveNumber(process.env.OPENAI_RATE_INTERVAL_MS, 60_000),
-  maxConcurrent: parsePositiveInt(process.env.OPENAI_MAX_CONCURRENT, 1),
-  defaultRetryDelayMs: parsePositiveNumber(process.env.OPENAI_RETRY_DELAY_MS, 20_000),
-  maxRetries: parsePositiveInt(process.env.OPENAI_MAX_RETRIES, 3),
-  maxRetryDelayMs: parsePositiveNumber(process.env.OPENAI_MAX_RETRY_DELAY_MS, 60_000)
+const limiter = new LlmRateLimiter({
+  maxRequests: envInt('ARK_RPM_LIMIT', 'OPENAI_RPM_LIMIT', 3),
+  intervalMs: envNum('ARK_RATE_INTERVAL_MS', 'OPENAI_RATE_INTERVAL_MS', 60_000),
+  maxConcurrent: envInt('ARK_MAX_CONCURRENT', 'OPENAI_MAX_CONCURRENT', 1),
+  defaultRetryDelayMs: envNum('ARK_RETRY_DELAY_MS', 'OPENAI_RETRY_DELAY_MS', 20_000),
+  maxRetries: envInt('ARK_MAX_RETRIES', 'OPENAI_MAX_RETRIES', 3),
+  maxRetryDelayMs: envNum('ARK_MAX_RETRY_DELAY_MS', 'OPENAI_MAX_RETRY_DELAY_MS', 60_000)
 });
 
 export default limiter;

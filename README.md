@@ -17,6 +17,16 @@ SeeBeauty 是一个基于 AI 的图片评分与报告平台，提供「正常点
 - AI：**火山引擎方舟（豆包）** [Responses API](https://www.volcengine.com/docs/82379/1569618)（多模态特征提取 + 文本评分 JSON）
 - 支付：Stripe（Checkout + Webhook）
 
+## 重新上线检查清单（离开 AWS 后）
+
+1. **MySQL**：新建实例并执行 `npm run db:init`（或导入 `database/seebeauty.sql`）；在 `backend/.env` 填写 `DB_*`；本地连库设 `DB_SSL=false`，云上按服务商要求设 `DB_SSL`。
+2. **豆包 / 方舟**：配置 `ARK_API_KEY`、`ARK_MODEL`（或 `ARK_VISION_MODEL` / `ARK_CHAT_MODEL`）；删除或勿再使用 `OPENAI_API_KEY`、`OPENAI_MODEL`（若仅残留旧变量且未配 `ARK_*`，启动时会打日志提示）。
+3. **前端地址**：生产环境设置 `FRONTEND_URL`、`CORS_ALLOWED_ORIGINS`（含 Vercel 域名 `https://xxx.vercel.app` 或自有域名）；勿再依赖已下线的固定 IP。
+4. **前端构建**：生产构建前设置 `VITE_API_URL=https://你的后端/api`；`frontend/src/utils/imageUrl.js` 依赖该变量拼接图片绝对地址。
+5. **Stripe**：Dashboard 中 Webhook URL 改为新后端 `https://你的域名/api/payments/webhook`，并更新 `STRIPE_WEBHOOK_SECRET` 等。
+6. **文件存储**：未配置 S3 时上传落在服务器 `backend/uploads`（无持久卷的重启可能丢失）；生产建议配置 `AWS_*` + `S3_BUCKET_NAME` 或等价对象存储。
+7. **Nginx**：若仍用 `nginx-site.conf`，把 `upstream api_backend` 里的地址改成新后端，不要用旧服务器 IP。
+
 ## 数据库说明（AWS 下线后是否还能用）
 
 - 本项目使用 **MySQL**，连接配置见 `backend/src/config/database.js`（`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`）。
@@ -101,13 +111,13 @@ ARK_REQUEST_TIMEOUT_MS=120000
 
 # 也可用 DOUBAO_API_KEY / DOUBAO_MODEL 作为别名（与 ARK_* 二选一即可）
 
-# 限流（仍沿用原环境变量名，适用于方舟调用）
-OPENAI_RPM_LIMIT=3
-OPENAI_RATE_INTERVAL_MS=60000
-OPENAI_MAX_CONCURRENT=1
-OPENAI_RETRY_DELAY_MS=20000
-OPENAI_MAX_RETRIES=3
-OPENAI_MAX_RETRY_DELAY_MS=60000
+# 方舟调用限流（优先使用 ARK_*；未设置时仍可读 OPENAI_* 旧名以兼容老 .env）
+ARK_RPM_LIMIT=3
+ARK_RATE_INTERVAL_MS=60000
+ARK_MAX_CONCURRENT=1
+ARK_RETRY_DELAY_MS=20000
+ARK_MAX_RETRIES=3
+ARK_MAX_RETRY_DELAY_MS=60000
 
 # Stripe
 STRIPE_SECRET_KEY=sk_test_xxx
@@ -166,11 +176,11 @@ npm run dev
 - 后端：`3000`
 - 前端：`5176`
 
-### 6) 快速验证方舟密钥（可选）
+### 6) 快速验证方舟（豆包）密钥（可选）
 
 ```bash
 cd backend
-node src/scripts/testOpenAI.js
+npm run test:ark
 ```
 
 ## 生产部署提示

@@ -1,4 +1,4 @@
-// 火山方舟（豆包）模型 ID，与控制台推理接入点一致。
+// 火山方舟（豆包）推理接入点模型 ID
 // 文档：https://www.volcengine.com/docs/82379/1298459
 
 import logger from './logger.js';
@@ -27,19 +27,29 @@ function pickChat() {
 }
 
 export function getChatModel() {
-  const id = pickChat();
-  if (process.env.OPENAI_MODEL && !process.env.ARK_CHAT_MODEL && !process.env.DOUBAO_CHAT_MODEL && !process.env.ARK_MODEL && !process.env.DOUBAO_MODEL) {
-    logger.warn('OPENAI_MODEL is set but ignored; use ARK_CHAT_MODEL / ARK_MODEL for 火山方舟.');
+  const hasArk = Boolean(
+    process.env.ARK_CHAT_MODEL
+    || process.env.DOUBAO_CHAT_MODEL
+    || process.env.ARK_MODEL
+    || process.env.DOUBAO_MODEL
+  );
+  if (process.env.OPENAI_MODEL && !hasArk) {
+    logger.warn('检测到 OPENAI_MODEL，项目已改用火山方舟豆包；请设置 ARK_MODEL 或 ARK_CHAT_MODEL。');
   }
-  return id;
+  return pickChat();
 }
 
 export function getVisionModel() {
-  const id = pickVision();
-  if (process.env.OPENAI_VISION_MODEL && !process.env.ARK_VISION_MODEL && !process.env.DOUBAO_VISION_MODEL && !process.env.ARK_MODEL && !process.env.DOUBAO_MODEL) {
-    logger.warn('OPENAI_VISION_MODEL is set but ignored; use ARK_VISION_MODEL / ARK_MODEL for 火山方舟.');
+  const hasArk = Boolean(
+    process.env.ARK_VISION_MODEL
+    || process.env.DOUBAO_VISION_MODEL
+    || process.env.ARK_MODEL
+    || process.env.DOUBAO_MODEL
+  );
+  if (process.env.OPENAI_VISION_MODEL && !hasArk) {
+    logger.warn('检测到 OPENAI_VISION_MODEL，项目已改用火山方舟豆包；请设置 ARK_MODEL 或 ARK_VISION_MODEL。');
   }
-  return id;
+  return pickVision();
 }
 
 export default { getChatModel, getVisionModel };

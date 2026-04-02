@@ -8,7 +8,7 @@ export function getImageUrl(url) {
   }
 
   // 如果是相对路径，添加后端服务器地址
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://13.57.220.226:3000/api';
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
   const baseURL = apiUrl.replace('/api', ''); // 移除 /api 后缀获取服务器根地址
   return `${baseURL}${url}`;
 }

@@ -149,7 +149,7 @@ class ShareCardService {
 
   // 生成分享链接
   async generateShareLink(reportId) {
-    const baseUrl = process.env.FRONTEND_URL || 'http://13.57.220.226:5176';
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5176';
     const shareToken = crypto.randomBytes(16).toString('hex');
 
     // TODO: 存储shareToken到数据库以验证

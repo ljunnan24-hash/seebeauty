@@ -7,7 +7,7 @@ const API_KEY = process.env.ARK_API_KEY || process.env.DOUBAO_API_KEY;
 const BASE = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
 
 console.log('='.repeat(60));
-console.log('火山方舟 Responses API 连接测试');
+console.log('火山方舟（豆包）Responses API 连接测试');
 console.log('='.repeat(60));
 console.log('API Key:', API_KEY ? `${String(API_KEY).slice(0, 8)}...` : 'NOT SET');
 console.log('Base URL:', BASE);

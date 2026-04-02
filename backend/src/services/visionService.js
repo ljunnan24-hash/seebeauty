@@ -4,7 +4,7 @@ import logger from '../config/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
 import modelResolver from '../config/modelResolver.js';
-import openAiRateLimiter from '../utils/openAiRateLimiter.js';
+import llmRateLimiter from '../utils/llmRateLimiter.js';
 import { createArkResponse, stripMarkdownJsonFence } from './arkResponsesClient.js';
 
 class VisionService {
@@ -110,7 +110,7 @@ class VisionService {
         body.max_output_tokens = maxOut;
       }
 
-      const text = await openAiRateLimiter.execute(
+      const text = await llmRateLimiter.execute(
         () => createArkResponse(body),
         { label: 'vision:extract' }
       );

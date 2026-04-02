@@ -13,7 +13,8 @@
     "db:init": "node src/scripts/initDatabase.js",
     "db:reset": "node src/scripts/initDatabase.js --force",
     "db:seed": "node src/scripts/initDatabase.js --seed",
-    "db:repair-indexes": "node src/scripts/repairUserIndexes.js"
+    "db:repair-indexes": "node src/scripts/repairUserIndexes.js",
+    "test:ark": "node src/scripts/testArk.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.540.0",

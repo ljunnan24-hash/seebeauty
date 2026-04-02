@@ -3,7 +3,7 @@ import { jsonrepair } from 'jsonrepair';
 import logger from '../config/logger.js';
 import promptTemplates from '../config/promptTemplates.js';
 import modelResolver from '../config/modelResolver.js';
-import openAiRateLimiter from '../utils/openAiRateLimiter.js';
+import llmRateLimiter from '../utils/llmRateLimiter.js';
 import { createArkResponse, stripMarkdownJsonFence } from './arkResponsesClient.js';
 
 class AIScoringService {
@@ -178,7 +178,7 @@ class AIScoringService {
         body.max_output_tokens = maxOut;
       }
 
-      const content = await openAiRateLimiter.execute(
+      const content = await llmRateLimiter.execute(
         () => createArkResponse(body),
         { label: `scoring:${mode}` }
       );
